@@ -1,8 +1,8 @@
 # 06_Udacity_Project_Prosper_Loan_Data_Exploration
 
-#### Technologies Used:
+#### Technologies Used: R Studio (ggplot2, GGally, RColorBrewer and memisc packages) 
 
-Final Submission: https://github.com/sewcodesleep/06_Udacity_Project_Prosper_Loan_Data_Exploration/blob/master/Prosper_Project.html
+Final Submission: https://github.com/sewcodesleep/06_Udacity_Project_Prosper_Loan_Data_Exploration/blob/master/Prosper_Project.pdf
 
 *Project Overview:*
 In this project, you will use R and apply exploratory data analysis techniques to explore relationships in one variable to multiple variables and to explore a selected data set for distributions, outliers, and anomalies.
