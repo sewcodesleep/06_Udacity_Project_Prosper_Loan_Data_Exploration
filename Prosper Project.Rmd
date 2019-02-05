@@ -1,0 +1,358 @@
+---
+title: "Prosper Data"
+author: "Alissa McBain"
+date: "6/2/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+chooseCRANmirror(graphics=FALSE, ind=1)
+```
+
+
+```{r initial_steps, include=FALSE, message=FALSE, warning=FALSE}
+#load packages
+install.packages('ggplot2')
+install.packages('GGally')
+install.packages('RColorBrewer')
+install.packages('memisc')
+
+library(ggplot2)
+library(GGally)
+library(RColorBrewer)
+library(memisc)
+
+# Load the Data
+getwd()
+setwd("/Users/alissamcbain/Google Drive/udacity/eda-course-materials/EDA project")
+df <- read.csv("prosperLoanData.csv")
+
+#This data set contains 81 variables, of which I'll only keep 13.
+#After coming through the varaibles, some were obvious duplicates, some were
+#similar enough that I could call them duplicates, and some I didn't think would
+#be useful in my analysis.
+
+df <- subset(df, select=c("ListingKey","BorrowerAPR", "ProsperScore",
+                          "EmploymentStatus", "IsBorrowerHomeowner",
+                          "CreditScoreRangeLower", "CreditScoreRangeUpper",
+                          "OpenRevolvingMonthlyPayment",
+                          "RevolvingCreditBalance",
+                          "BankcardUtilization", "DebtToIncomeRatio",
+                          "StatedMonthlyIncome", "LoanOriginalAmount"))
+
+head(df)
+str(df)
+
+#Within this new, smaller data set, I noticed there are some duplicates
+#("ListingKey" which is the unique key has some duplicates, 113066 levels,
+#instead of the expected 113937)
+
+length(unique(df$ListingKey))
+#113,066 unique rows, out of 113,937 means there are 871 duplicates
+
+#I'll get rid of those duplicates now
+df <- df[!duplicated(df$ListingKey), ]
+
+#And remove the ListingKey column since it is no longer needed
+df <- subset(df, select = -ListingKey)
+
+#Lastly, there are two columns for a borrower's credit score, range upper and
+#range lower. To get more usable data, I'll create a new column, just called
+#CreditScore, that takes the median of the range.
+df$CreditScore <- ((df$CreditScoreRangeUpper - df$CreditScoreRangeLower)/2) +
+  df$CreditScoreRangeLower
+
+#And now I'll remove the Upper and Lower Credit Score columns for simplicity
+df <- subset(df, select = -CreditScoreRangeLower)
+df <- subset(df, select = -CreditScoreRangeUpper)
+
+#subset the data to only look at rows where ProsperScore is not blank (since
+#this variable will be my y)
+dfsubset <- subset(df, !is.na(ProsperScore))
+
+```
+
+# Why Prosper?
+
+I chose to use the Prosper data set. Although it is large, the data is most
+interesting to me. I have a background in finance, and I love personal finance.
+I enjoy helping people understand their finances, set budgets and improve their 
+credit scores, since these steps have helped me out in life so so much. I
+personally am an investor at Prosper, so I thought it would be interesting to
+try to predict the score Prosper gives a potential loan ('ProsperScore'), or try
+to predict a loan's APR. 
+
+# Univariate Plots and Analysis
+
+```{r univariate_plots1, echo=FALSE, warning=FALSE}
+#to get a general idea about my data, I'll look at a quick summary
+summary(dfsubset)
+```
+
+My data set consists of eleven variables, two of which I will be trying to predict (ProsperScore or BorrowerAPR). The other nine variables are facts about a customer's credit and lifestyle. One variable, EmploymentStatus, is factored with nine levels. Another variable, IsBorrowerHomeowner is also factored, but with only a True or False value. The remaining seven variables are all continuous variables. Five of these variables (OpenRevolvingMonthlyPayment, RevolvingCreditBalance, BankcardUtilization, DebtToIncomeRatio and StatedMonthlyIncome) have very large outliers, so I'm going to keep that in mind as I move on.
+
+```{r univariate_plots2, echo=FALSE, warning=FALSE}
+#I'd like to see the histogram distribution of ProsperScore
+ggplot(data = dfsubset, aes(x = ProsperScore))+
+  geom_histogram(binwidth = .5, fill = 'deeppink2')
+```
+
+This histogram of ProsperScore shows that it is fairly normal distributed, with discrete values. 
+
+```{r univariate_plots3, echo=FALSE, warning=FALSE}
+#And now a histogram of BorrowerAPR
+ggplot(data = dfsubset, aes(x = BorrowerAPR))+
+  geom_histogram(binwidth = .005, fill = "firebrick")
+```
+
+The histogram for BorrowerAPR is also fairly normally distributed, with a large spike around 0.36/0.37, so that is a bit curious. There is also a spike at 0.29.
+
+```{r univariate_plots4, echo=FALSE, warning=FALSE}
+#I predict that CreditScore will have the most impact on my outcome variable, so
+#I'd like to take a look at that variable a bit as well
+ggplot(data = dfsubset, aes(x = CreditScore))+
+  geom_histogram(binwidth = 10, fill = 'darkorange')
+```
+
+This histogram of CreditScore is normal, with a right skewness, indicating that there may be outliers on the larger side of CreditScore that are pulling the mean. Most CreditScores are between 650 and 750.
+
+```{r univariate_plots5, echo=FALSE, warning=FALSE}
+#And I wonder about the employment status of my data set
+ggplot(data = dfsubset, aes(x = EmploymentStatus))+
+  geom_bar(fill = "gold")
+```
+
+Most borrowers in the data set are Employed.
+
+```{r univariate_plots6, echo=FALSE, warning=FALSE}
+#let's look at a plot that has some very high outliers
+ggplot(data = dfsubset, aes(x = RevolvingCreditBalance))+
+  geom_histogram(binwidth = 1000, fill = "chartreuse4")+
+  xlim(0, quantile(dfsubset$RevolvingCreditBalance, 0.95))
+```
+
+RevolvingCreditBalance was one of the variables with larger outliers that I noticed from the Summary table (looking at the 3rd Quartile value vs. the Max, they are very spread apart). Limiting the x axis to the 95th quantile cuts off many of those large outliers, bringing the max down from 999,165 to about 60,000. Much cleaner and easier to read.
+
+```{r univariate_plots7, echo=FALSE, warning=FALSE}
+ggplot(data = dfsubset, aes(x = log10(RevolvingCreditBalance)))+
+  geom_histogram(binwidth = .01, fill = "deepskyblue3")
+```
+
+Also, taking the log10 of RevolvingCreditBalance made the data much more normally distributed (slightly left-skewed), so I'm going to keep that in mind for future analysis as well. 
+
+# Bivariate Plots and Analysis
+
+```{r bivariate_plots1, echo=FALSE, warning=FALSE, message=FALSE}
+#I'm going to view a plot matrix first of the subsetted data
+ggpairs(dfsubset,
+        lower = list(continuous = wrap("points", shape = I('.'))),
+        upper = list(combo = wrap("box", outlier.shape = I('.'))))
+
+```
+
+Observing this GGPairs plots, and keeping in mind I'd like to predict ProsperScore or BorrowerAPR, what do I want to explore more? Well, looking at the correlation coefficients, the variable most correlated with ProsperScore is BorrowerAPR. This makes sense because both of these variables are the outcome of the analysis that Prosper does on an individual. Next most correlated with ProsperScore is CreditScore. 
+
+The strongest correlation of all my variables pairs RevolvingCreditBalance and OpenRevolvingMonthlyPayment. This is understandable because the higher the credit balance is, the higher the monthly payment should be (perhaps a lower monthly payment for someone with a higher CreditScore? <- something to explore).
+
+```{r bivariate_plots2, echo=FALSE, warning=FALSE, message=FALSE}
+#let's look at borrowerAPR vs ProsperScore
+ggplot(data = dfsubset, aes(x = ProsperScore, y = BorrowerAPR))+
+  geom_point(alpha = 0.05, position = 'jitter', color = 'mediumpurple3')+
+  geom_smooth(method='lm', color = 'springgreen3')+
+  scale_x_continuous(breaks = 1:11)+
+  scale_y_continuous(breaks = seq(0, 0.5, 0.05))
+```
+
+The first relationship I looked at was ProsperScore vs BorrowerAPR. They were indeed correlated, although not as strongly as I would have assumed. There is
+quite a lot of data at the 0.36 APR line (36%), which pulls the line of best fit higher than I would expect. 
+
+```{r bivariate_plots3, echo=FALSE, warning=FALSE, message=FALSE}
+#now, CreditScore vs ProsperScore
+ggplot(data = dfsubset, aes(x = ProsperScore, y = CreditScore))+
+  geom_point(alpha = 0.01, position = 'jitter', color = 'deeppink2')+
+  geom_smooth(method = 'lm', color = 'darkgreen')+
+  scale_x_continuous(breaks = 1:11)+
+  scale_y_continuous(breaks = seq(600, 900, 25))
+```
+
+Second, I looked at ProsperScore vs CreditScore. Again, these two variables were correlated, and when I get to making a model to predict ProsperScore, I'm sure CreditScore will be included. The variance of the data was larger than I was expecting, as I can many borrowers with credit scores in the range of 640 to 800 all received ProsperScores of 8, for example. 
+
+```{r bivariate_plots4, echo=FALSE, warning=FALSE, message=FALSE}
+#remembering from above (univariable section) that transforming
+#RevolvingCreditBalance to a log scale helped out quite a bit, I'd like to look
+#at this vs ProsperScore
+ggplot(data = dfsubset, aes(x = ProsperScore, y = log10(RevolvingCreditBalance)))+
+  geom_point(alpha = 0.1, position = 'jitter', color = 'firebrick')+
+  scale_x_continuous(breaks = 1:11)
+```
+
+Next I looked at ProsperScore vs log(RevolvingCreditBalance), and didn't find much correlation. Unfortunately this particular analysis didn't add any information to my investigation.
+
+```{r bivariate_plots5, echo=FALSE, warning=FALSE, message=FALSE}
+#I'll look at RevolvingCreditBalance vs OpenRevolvingMonthlyPayment
+#both of these variables have large outliers, so I'll limit them to only the
+#bottom 95% of the data
+ggplot(data = dfsubset, aes(x = OpenRevolvingMonthlyPayment,
+                            y = RevolvingCreditBalance))+
+  geom_point(alpha = 0.1, color = "darkorange")+
+  xlim(0, quantile(dfsubset$OpenRevolvingMonthlyPayment, 0.95))+
+  ylim(0, quantile(dfsubset$RevolvingCreditBalance, 0.95))+
+  geom_smooth(method = 'lm', color = "deepskyblue")
+```
+
+The two variables with the highest correlation on my GGPairs plots was RevolvingCreditBalance vs OpenRevolvingMonthlyPayment. Both of these variables have large outliers, so I limited the plot to only the 95th percentile for each variable. The plot shows a strong positive correlation, which makes sense when I think about what each variable represents. The higher a borrower's credit balance is, the higher (I would assume) their monthly payments on that balance would be. 
+
+```{r bivariate_plots6, echo=FALSE, warning=FALSE, message=FALSE}
+#The experts say that 30% of a person's credit score is determined by the amount
+#of outstanding debt that they currently have, so I'm curious to see if
+#BankcardUtilization has an impact on a person's ProsperScore
+#limiting y to 1 because I'm not sure that it's possible to have over 100%
+#utilization, and if those, those would be outliers anyways
+ggplot(data = dfsubset, aes(x = ProsperScore, y = BankcardUtilization))+
+  geom_point(alpha = 0.01, position = 'jitter', color = 'gold')+
+  ylim(0,1)+
+  scale_x_continuous(breaks = 1:11)
+```
+
+Lastly, expects say that 30% of a person's credit score is determined by the amount of outstanding debt that they currently have, so I was curious to see if BankcardUtilization has an impact on a person's ProsperScore. I limited y to 1 because I'm not sure that it's possible to have over 100% utilization, and if so, those would be outliers anyways. Unfortunately, I didn't see a strong correlation, but there was a faint negative trend to the data. As a borrower's utilization went up, their ProsperScore went down, in general.
+
+# Multivariate Plots and Analysis
+```{r multivariate_plots1, echo=FALSE, warning=FALSE, message=FALSE}
+#first I'd like to dig into ProsperScore vs CreditScore a bit, but adding a
+#facet of Homeownership
+ggplot(data = dfsubset, aes(x = ProsperScore, y = CreditScore))+
+  geom_point(alpha = 0.01, position = 'jitter', color = 'chartreuse3')+
+  geom_smooth(method = 'lm', color = 'cornflowerblue')+
+  scale_x_continuous(breaks = 1:11)+
+  scale_y_continuous(breaks = seq(600, 900, 25))+
+  facet_wrap(~IsBorrowerHomeowner)
+```
+
+The first thing I looked at was ProsperScore vs CreditScore, faceted by whether or not the borrower was a homeowner. I noticed that the line of best fit was slightly more steep for homeowners, meaning that the correlation between ProsperScore and CreditScore was slightly stronger for them. Also, I noticed that, in general, homeowners had a wider range of ProsperScores, filling up more of the higher ProsperScores than non-homeowners. 
+
+```{r multivariate_plots2, echo=FALSE, warning=FALSE, message=FALSE}
+#what if I want to see information based on a borrower's StatedMonthlyIncome?
+#create a new variable, IncomeBucket
+dfsubset$IncomeBucket <- cut(dfsubset$StatedMonthlyIncome,
+                             c(0,2000,4000,6000,8000,10000,12000))
+
+#Now look at ProsperScore vs CreditScore, colored by IncomeBucket
+ggplot(data = dfsubset, aes(x = ProsperScore, y = CreditScore,
+                            color = IncomeBucket))+
+  geom_point(alpha = 0.6, position = 'jitter')+
+  scale_x_continuous(breaks = 1:11)+
+  scale_y_continuous(breaks = seq(600, 900, 25))+
+  scale_color_brewer(type = 'div', palette = 'Spectral')
+```
+
+Next, this plot is a funfetti plot, if I've ever seen one. Again, I looked at ProsperScore vs CreditScore, this time coloring the points by a borrower's income range (which I bucketed, to make the plot easier to interpret). There is a clear correlation with income range; I can detect a slight correlation of higher incomes with higher Prosper and Credit Scores, and lower incomes with lower Prosper and Credit Scores (the plot is more green/blue in the top right, and slightly more red/orange in the bottom left). But, this plot is very overplotted, even using 60% transparency, so I'd like to take a look at just a sample of the data. 
+
+```{r multivariate_plots3, echo=FALSE, warning=FALSE, message=FALSE}
+#this plot is so busy, maybe it would be more clear with a sample of 5,000 points
+set.seed(826)
+dfsubset.sample <- dfsubset[sample.int(nrow(dfsubset), 5000), ]
+
+#same plot, only with a sample of the data instead of the whole data set
+ggplot(data = dfsubset.sample, aes(x = ProsperScore, y = CreditScore,
+                                   color = IncomeBucket))+
+  geom_point(alpha = 0.6, position = 'jitter')+
+  scale_x_continuous(breaks = 1:11)+
+  scale_y_continuous(breaks = seq(600, 900, 25))+
+  scale_color_brewer(type = 'div', palette = 'Spectral')
+```
+
+To get a more clear picture, I took a random sample of 5,000 data points and created a new data frame from those. Then I replotted the same graph with my random sample, to see if I could gather any trends from this smaller data set. It seems about the same, with a lower income slightly correlated to a lower Credit and Prosper Score, and vice verse. 
+
+```{r multivariate_plots4, echo=FALSE, warning=FALSE, message=FALSE}
+#The strongest correlation of all my variables pairs RevolvingCreditBalance and
+#OpenRevolvingMonthlyPayment, but what if we also looked at CreditScore with these two other variables?
+ggplot(data = dfsubset, aes(x = OpenRevolvingMonthlyPayment,
+                            y = RevolvingCreditBalance, color = CreditScore))+
+  geom_point(alpha = 0.7)+
+  xlim(0, quantile(dfsubset$OpenRevolvingMonthlyPayment, 0.95))+
+  ylim(0, quantile(dfsubset$RevolvingCreditBalance, 0.95))+
+  scale_color_gradient(low="blue", high="red")
+```
+
+Lastly, since my strongest correlation was between OpenRevolvingMonthlyPayment and RevolvingCreditBalance, I wanted to see if CreditScore was a factor in the correlation. I plotted them, with CreditScore going from blue to red, and as you can see, the plot is VERY overplotted and very hard to interpret because of this. 
+
+```{r multivariate_plots5, echo=FALSE, warning=FALSE, message=FALSE}
+#again, the plot is so busy, I'm going to just look at the sample data set
+ggplot(data = dfsubset.sample, aes(x = OpenRevolvingMonthlyPayment,
+                                   y = RevolvingCreditBalance,
+                                   color = CreditScore))+
+  geom_point(alpha = 0.7)+
+  xlim(0, quantile(dfsubset.sample$OpenRevolvingMonthlyPayment, 0.95))+
+  ylim(0, quantile(dfsubset.sample$RevolvingCreditBalance, 0.95))+
+  scale_color_gradient(low="blue", high="red")
+```
+
+So, I used the sample data frame I made earlier and plotted that instead. This plot is much easier to read, and I can see that the correlation between OpenRevolvingMonthlyPayment and RevolvingCreditBalance is much stronger with lower values, and becomes much more dispersed with higher values of each variables. Unfortunately, there is no discernible pattern to CreditScore on this data. 
+
+```{r multivariate_plots6, echo=FALSE, warning=FALSE, message=FALSE}
+#create a model
+m1 <- lm(ProsperScore ~ CreditScore, data = dfsubset)
+m2 <- update(m1, ~. + log10(DebtToIncomeRatio+.01))
+m3 <- update(m2, ~. + IsBorrowerHomeowner)
+m4 <- update(m3, ~. + EmploymentStatus)
+m5 <- update(m4, ~. + log10(BankcardUtilization+.01))
+mtable(m1, m2, m3, m4, m5)
+```
+
+The last step I took was to build a model with the five mostly likely predictors of ProsperScore. Even with these five variables, the R squared value is only 0.247, so I would not feel confident saying this is a strong model to predict a borrower's ProsperScore. 
+
+### Plot One
+```{r Plot_One, echo=FALSE, warning=FALSE, message=FALSE}
+
+ggplot(data = dfsubset, aes(x = log10(RevolvingCreditBalance)))+
+  geom_histogram(binwidth = .01, fill = "hotpink1")+
+  ggtitle("Histogram of log10(RevolvingCreditBalance)")+
+  scale_x_continuous(breaks = seq(0,6,0.5))
+
+```
+
+### Description One
+
+I chose this plot as my first graphic because I found several variables that had large outliers (including RevolvingCreditBalance) and those outliers pulled the data and made them very right skewed. By taking the log 10 of these variables, it made their distributions much easier to work with. 
+
+### Plot Two
+```{r Plot_Two, echo=FALSE, warning=FALSE, message=FALSE}
+ggplot(data = dfsubset, aes(x = ProsperScore, y = CreditScore))+
+  geom_point(alpha = 0.01, position = 'jitter', color = 'hotpink1')+
+  geom_smooth(method = 'lm', color = 'hotpink3')+
+  scale_x_continuous(breaks = 1:11)+
+  scale_y_continuous(breaks = seq(600, 900, 25))+
+  ggtitle("ProsperScore vs CreditScore with Line of Best Fit")
+```
+
+### Description Two
+
+I chose this plot because I used this relationship as a basis for predicting ProsperScore. Though the relationship is not perfectly linear, CreditScore was the variable with the highest correlation to ProsperScore.
+
+### Plot Three
+```{r Plot_Three, echo=FALSE, warning=FALSE, message=FALSE}
+#first, I'm going to make my labels more clear
+dfsubset$IncomeBucket <- cut(dfsubset$StatedMonthlyIncome,
+                             c(0,2000,4000,6000,8000,10000,12000), 
+                             labels = c("$0 - $2,000", "$2,000 - $4,000",
+                                        "$4,000 - $6,000", "$6,000 - $8,000", 
+                                        "$8,000 - $10,000", "$12,000 and above"))
+
+ggplot(data = dfsubset, aes(x = ProsperScore, y = CreditScore, color = 
+                              IncomeBucket))+
+  geom_point(alpha = 0.6, position = 'jitter')+
+  scale_x_continuous(breaks = 1:11)+
+  scale_y_continuous(breaks = seq(600, 900, 25))+
+  scale_color_brewer(type = 'seq', palette = "PuRd", guide = guide_legend(
+    title = 'Income Range', reverse = T))+
+  ggtitle("ProsperScore vs CreditScore by Income")
+```
+
+### Description Three
+
+I chose this plot as my third most interesting plot. I changed the colors from a funfetti, to a sliding scale from lavender to red. Though there isn't a STRONG  correlation between ProsperScore and CreditScore, with this plot I can definitely tell there is a correlation between those two variables and Income. The top right of the plot is much more red, and the bottom left of the plot is much more lavender. 
+
+# Reflection
+
+In this exploration, I didn't find the strong relationships that I was hoping to find, but was pleasantly surprised to find some correlations. I struggled in the beginning, narrowing down this large data set; deciding what to keep and what to toss was difficult. Perhaps in the future, a better model could be made to predict ProsperScore with more of the variables that I discarded. Of course, Prosper has their algorithm, which uses some, if not all, of these variables. 
